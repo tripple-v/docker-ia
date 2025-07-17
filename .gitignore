@@ -1,0 +1,5 @@
+*.iml
+/.idea/
+
+/n8n/n8n_audio_data/
+/n8n/n8n_data/

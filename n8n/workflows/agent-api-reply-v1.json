@@ -1,0 +1,145 @@
+{
+  "name": "Agent API Reply",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "mode": "webhook",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -920,
+        -20
+      ],
+      "id": "3ded4453-5f11-48d5-87eb-133abc404656",
+      "name": "When chat message received",
+      "webhookId": "a079c67d-d384-4e5f-af3e-cfc2cc813f3b"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "=You are an AI chatbot assisting users who want to check the status of their orders. Follow these instructions carefully.\n\n### Tools\n- Call the `Order state` tool to retrieve the status of a user's order.\n- You must have the user's **order number** before calling this tool.\n- Only call the `Order state` tool if the user explicitly asks to check their order status.\n\n### Rules\n1. If the user asks to check the status of their order and you already have their order number, call the `Order state` tool and return the result to the user in a clear and professional way.\n2. If you are missing any of the required fields (order number), ask for them **one at a time** in separate messages. Wait for each answer before asking the next.\n3. If this is a new conversation, first ask for the user's order number.\n4. If the user asks about anything unrelated to order status, politely explain that you are here to assist only with order tracking.\n5. Never assume or fabricate any information. Only proceed when all required details are explicitly provided.\n7. Use the same language than the user, if the user speaks french, your response MUST be in French, for example."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        -660,
+        -20
+      ],
+      "id": "bd7ee6f1-7053-4081-a47a-40df144ecb88",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "google/gemma-3n-e4b",
+          "mode": "list",
+          "cachedResultName": "google/gemma-3n-e4b"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -700,
+        200
+      ],
+      "id": "7866177f-a731-4140-a7b3-e764a2967c72",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "OLn2IUUxc0zc6yWD",
+          "name": "LM Studio"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -580,
+        200
+      ],
+      "id": "2ba7e006-74c3-46a5-b012-41064501d6dc",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "toolDescription": "=Tool Name: order_state\n\nDescription:\nUse this tool to retrieve the current status of a customer's order.\n\nBefore calling this tool, you must collect the following information from the user:\n- their **name**\n- their **email**\n- their **order number** (orderId)\n\nThis tool will return a JSON object containing the order’s current status.\n\nExample output:\n{\n  \"orderId\": \"fixed-id-2\",\n  \"orderName\": \"Gaming Laptop\",\n  \"orderStatus\": \"SHIPPED\"\n}\n\nPossible orderStatus values:\n- `CREATED`: The order has been created. Estimated delivery in 4–5 days.\n- `PAID`: The order has been paid. Estimated delivery in 3–4 days.\n- `SHIPPED`: The order has been shipped. Estimated delivery in 2–3 days.\n- `COMPLETED`: The order has been delivered to the customer.\n\nAlways return the status in a helpful and user-friendly message after calling this tool.\nIf any required information is missing, ask the user to provide it.",
+        "url": "=http://host.docker.internal:9001/api/mock/orders/{{ $fromAI('orderId', `The order number`, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        -460,
+        200
+      ],
+      "id": "93d59365-0e72-4cd2-b6c0-172706ee7d15",
+      "name": "Get order state"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get order state": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "5153ae61-361f-4c9c-ab67-d03348c6a385",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d0684eb0537c5b95e8a59a8739c3c859017d5968f1c52db183a694702f9b938a"
+  },
+  "id": "uWIDZLJwieDsVoDI",
+  "tags": []
+}

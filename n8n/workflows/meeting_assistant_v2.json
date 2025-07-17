@@ -1,0 +1,438 @@
+{
+  "name": "Meeting Assistant v2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "upload-audio",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "9ef44a3b-96de-4fda-a7b2-7d6974bc9d49",
+      "name": "Upload Audio",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        -60
+      ],
+      "webhookId": "27ac5b2f-1fc4-4d6b-8d1b-03753d55b602"
+    },
+    {
+      "parameters": {
+        "fileName": "=/data/{{ $('Upload Audio').item.binary.data.fileName }}",
+        "options": {
+          "append": false
+        }
+      },
+      "id": "a73382cf-5eae-4376-aa0d-7506c4d14f37",
+      "name": "Write Audio File",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        460,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=/home/node/whisper/build/bin/whisper-cli -m /home/node/whisper/models/ggml-medium.bin -f {{ $('Set Variables').item.json.audioFilePath }} -ovtt -l en -t 10"
+      },
+      "id": "cc65cfd3-6424-49e1-b293-ea354209eeb7",
+      "name": "Run Whisper.cpp",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        15
+      ]
+    },
+    {
+      "parameters": {
+        "operationMode": "documentLoader",
+        "options": {
+          "summarizationMethodAndPrompts": {
+            "values": {
+              "combineMapPrompt": "You are a professional assistant. Summarize the following meeting transcript segment clearly and concisely. Focus on key points, important information, decisions made, and action items.\n\n\"{text}\"\n\nCONCISE SUMMARY:",
+              "prompt": "=You are a professional meeting assistant. The following text contains partial summaries of different segments from the same meeting.\n\nCombine them into a single clear, structured, and concise summary. Avoid repetition. Highlight:\n- the main topics discussed,\n- key decisions made,\n- action points assigned,\n- any critical insights or follow-ups.\n\nSummarize the following content in clean, semantic HTML.\nOnly return inner HTML content (no <html>, <head> or <body> tags). Use <h2>, <p>, <ul>, <li>, etc.. Do not use Markdown.\n\nWrite the final summary {{ $('Detect Language Instruction').item.json.languageInstruction }}.\n\n\"{text}\""
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainSummarization",
+      "typeVersion": 2.1,
+      "position": [
+        2220,
+        -60
+      ],
+      "id": "9d6acff2-5734-4c37-894f-703edf423bdf",
+      "name": "Summarization Chain"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        2360,
+        160
+      ],
+      "id": "436b6e61-1bdb-404f-8a0b-8bcb4a9ed09d",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f38eae27-2620-412f-ae44-43dc5766e26d",
+              "name": "=title",
+              "value": "={{ $('Set Variables').item.json.audioFileName }}",
+              "type": "string"
+            },
+            {
+              "id": "bddac653-e691-4323-8682-d377ce1c0ee8",
+              "name": "=summary",
+              "value": "={{ $json.output.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2580,
+        -60
+      ],
+      "id": "9315dbdf-f5e3-45fc-a299-26302252a368",
+      "name": "Clean Up"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        2800,
+        -60
+      ],
+      "id": "c529f086-3d62-40df-b6d7-2e6a18ff688a",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Récupérer la langue depuis le header HTTP\nconst lang = $json.headers?.['accept-language']?.toLowerCase().slice(0, 2) || 'en';\n\n// Dictionnaire des consignes par langue\nconst languageInstructions = {\n  fr: 'in French',\n  en: 'in English',\n  de: 'in German',\n  es: 'in Spanish',\n};\n\n// Si langue inconnue, fallback en anglais\nconst instruction = languageInstructions[lang] || 'in English';\n\nreturn [\n  {\n    json: {\n      languageInstruction: instruction,\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        -60
+      ],
+      "id": "f686be91-2d02-4b5f-a52f-38aac59a58f9",
+      "name": "Detect Language Instruction"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7b090936-7624-4868-926b-3e075eee34d1",
+              "name": "=audioFilePath",
+              "value": "={{ $('Write Audio File').item.json.fileName }}",
+              "type": "string"
+            },
+            {
+              "id": "925c6540-4076-408a-911e-12fb444e134b",
+              "name": "transcriptionFilePath",
+              "value": "={{ $('Write Audio File').item.json.fileName }}.vtt",
+              "type": "string"
+            },
+            {
+              "id": "a9a43833-d024-4335-8cf6-f79ff76d6288",
+              "name": "audioFileName",
+              "value": "={{ $('Write Audio File').first().binary.data.fileName }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        900,
+        -60
+      ],
+      "id": "d386776b-671e-42c3-820b-58fb51c5979d",
+      "name": "Set Variables"
+    },
+    {
+      "parameters": {
+        "command": "=test -f {{ $json.transcriptionFilePath }} && echo \"exists\" || echo \"missing\""
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        -60
+      ],
+      "id": "ddadc58e-ce03-4e73-aae4-fa9286369a87",
+      "name": "Check transcription exists"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "22056a4a-0c79-4408-921e-bbf49df01d44",
+              "leftValue": "={{ $json.stdout }}",
+              "rightValue": "exists",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1340,
+        -60
+      ],
+      "id": "a747abb4-f282-45ae-a216-b991616fa6b4",
+      "name": "If transcription exists"
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $('Set Variables').item.json.transcriptionFilePath }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1780,
+        -60
+      ],
+      "id": "b41b3b53-3590-4a47-86e7-bdf5e4f01ceb",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        -60
+      ],
+      "id": "84ce710e-25bd-4a69-acfd-09a6319432ee",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "google/gemma-3n-e4b",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        2240,
+        160
+      ],
+      "id": "e8d31119-91b6-4bc9-88f3-2c78bc869e11",
+      "name": "LM Studio - Gemma",
+      "credentials": {
+        "openAiApi": {
+          "id": "OLn2IUUxc0zc6yWD",
+          "name": "LM Studio"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Upload Audio": {
+      "main": [
+        [
+          {
+            "node": "Write Audio File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Audio File": {
+      "main": [
+        [
+          {
+            "node": "Detect Language Instruction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Whisper.cpp": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarization Chain": {
+      "main": [
+        [
+          {
+            "node": "Clean Up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Summarization Chain",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Up": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Language Instruction": {
+      "main": [
+        [
+          {
+            "node": "Set Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Variables": {
+      "main": [
+        [
+          {
+            "node": "Check transcription exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check transcription exists": {
+      "main": [
+        [
+          {
+            "node": "If transcription exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If transcription exists": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Whisper.cpp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Summarization Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LM Studio - Gemma": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Summarization Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "07a7932b-a49b-45b1-bdca-5c561181d103",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "95c07455850c38050521d7dc1bfcd70fb81d8e66ee39ae07d15a1f874afe385b"
+  },
+  "id": "hKkAC3cIlYwViacE",
+  "tags": []
+}
