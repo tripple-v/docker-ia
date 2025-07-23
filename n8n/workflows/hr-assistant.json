@@ -1,0 +1,329 @@
+{
+  "name": "HR assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "text-embedding-bge-m3",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        520,
+        480
+      ],
+      "id": "6c5411eb-42a2-4c2e-8f59-dda6e32d695d",
+      "name": "Embeddings OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "OLn2IUUxc0zc6yWD",
+          "name": "LM Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### 📚 Load Data Flow",
+        "height": 460,
+        "width": 700,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -180,
+        -60
+      ],
+      "typeVersion": 1,
+      "id": "08acc26c-8715-47da-8edd-db42a9087e11",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "=Your primary mission is to provide accurate and context-aware answers to user queries by leveraging our specialized knowledge base, accessible via the 'HR Agent' tool.\n\n🚨 You MUST always call the 'HR Agent' tool first to retrieve relevant context before attempting to answer the user's question. Even if the question appears simple, do NOT answer without consulting the tool.\n\nOnce you have retrieved the most relevant information, synthesize a comprehensive and structured answer grounded **strictly** in that context.\n\nIf the context is insufficient, you must clearly state that you do not have enough information.\n\nLanguage Rule: You MUST detect the language of the User's Question below and formulate YOUR ENTIRE response in that same language. Never mix languages.\n\nUser's Question:\n\"{{ $json.chatInput }}\""
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        940,
+        -20
+      ],
+      "id": "95503db9-61a6-469f-acc3-cc5d5a218a1f",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "public": true,
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        -20
+      ],
+      "id": "1a2a98f3-5ca9-4975-90b7-291df64ea4f6",
+      "name": "When chat message received",
+      "webhookId": "b930040f-f5d6-4132-b91c-574b83f5909c"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "google/gemma-3n-e4b",
+          "mode": "list",
+          "cachedResultName": "google/gemma-3n-e4b"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        720,
+        200
+      ],
+      "id": "eee1abce-19ed-4de6-a8b3-9166c9705b41",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "OLn2IUUxc0zc6yWD",
+          "name": "LM Studio"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### 🐕 2. Retriever Flow",
+        "height": 460,
+        "width": 720,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        600,
+        -60
+      ],
+      "typeVersion": 1,
+      "id": "b0a3964d-09d0-4b21-aa3b-784f484bd981",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "demo-rh",
+          "mode": "list",
+          "cachedResultName": "demo-rh"
+        },
+        "embeddingBatchSize": 2000,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        100,
+        0
+      ],
+      "id": "623fefe7-068d-413b-acce-4085246a0060",
+      "name": "Qdrant Vector Store",
+      "credentials": {
+        "qdrantApi": {
+          "id": "0ONCSvvlnzS6wEIr",
+          "name": "QdrantApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        380,
+        180
+      ],
+      "id": "cbbcd575-009a-4688-aef7-14f74a36ed5d",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "formTitle": "Upload your data to test RAG",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Upload your file(s)",
+              "fieldType": "file",
+              "acceptFileTypes": ".pdf, .csv",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -120,
+        0
+      ],
+      "id": "68979052-ebd0-452f-a1f3-e51b5b7d1245",
+      "name": "Upload your file here",
+      "webhookId": "f2a7c432-ecc0-4cad-87d3-afe38997cc38"
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 15
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        920,
+        200
+      ],
+      "id": "f8e9c0d5-70dd-455e-95c5-9b6d39729f12",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "=This tool allows you to query a knowledge base that contains all authoritative HR-related information. \nYou MUST use it to retrieve relevant documents before answering ANY user question.\nEven if you believe you know the answer, always use this tool to validate or find the correct context.",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "demo-rh",
+          "mode": "list",
+          "cachedResultName": "demo-rh"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        1060,
+        200
+      ],
+      "id": "bf8140d9-463d-4b0a-b367-3040fff31e01",
+      "name": "HR Agent",
+      "credentials": {
+        "qdrantApi": {
+          "id": "0ONCSvvlnzS6wEIr",
+          "name": "QdrantApi account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "HR Agent",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload your file here": {
+      "main": [
+        [
+          {
+            "node": "Qdrant Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        []
+      ]
+    },
+    "HR Agent": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "020b624f-b393-4ade-8402-4f2a78567175",
+  "meta": {
+    "templateId": "rag-starter-template",
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d0684eb0537c5b95e8a59a8739c3c859017d5968f1c52db183a694702f9b938a"
+  },
+  "id": "tFFuuDN8N0HIS4VU",
+  "tags": [
+    {
+      "createdAt": "2025-07-23T10:52:15.604Z",
+      "updatedAt": "2025-07-23T10:52:15.604Z",
+      "id": "lCS2zc7Il60j7PHQ",
+      "name": "RAG"
+    }
+  ]
+}

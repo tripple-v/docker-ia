@@ -1,0 +1,658 @@
+{
+  "name": "RAG Enterprise avec Agents IA",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook RAG",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [260, 200],
+      "webhookId": "rag-enterprise-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Analyse de la requête utilisateur\nconst userQuery = $json.query;\nconst userId = $json.userId || 'anonymous';\nconst userRole = $json.userRole || 'employee';\nconst timestamp = new Date().toISOString();\n\n// Classification de la requête\nlet queryType = 'general';\nlet needsRealTimeData = false;\nlet requiresPrivilegedAccess = false;\n\n// Détection du type de requête\nif (userQuery.toLowerCase().includes('stock') || userQuery.toLowerCase().includes('inventaire')) {\n  queryType = 'inventory';\n  needsRealTimeData = true;\n}\nif (userQuery.toLowerCase().includes('salaire') || userQuery.toLowerCase().includes('rh')) {\n  queryType = 'hr';\n  requiresPrivilegedAccess = true;\n}\nif (userQuery.toLowerCase().includes('vente') || userQuery.toLowerCase().includes('chiffre')) {\n  queryType = 'sales';\n  requiresPrivilegedAccess = true;\n}\nif (userQuery.toLowerCase().includes('politique') || userQuery.toLowerCase().includes('procédure')) {\n  queryType = 'policy';\n}\n\n// Formatage pour embedding\nconst queryForEmbedding = userQuery.replace(/[^a-zA-Z0-9 àáâäéèêëïîôöùûüÿç]/g, '').toLowerCase();\n\nreturn {\n  userQuery,\n  userId,\n  userRole,\n  timestamp,\n  queryType,\n  needsRealTimeData,\n  requiresPrivilegedAccess,\n  queryForEmbedding,\n  sessionId: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`\n};"
+      },
+      "id": "query-analyzer",
+      "name": "Analyseur de Requête",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.requiresPrivilegedAccess }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            },
+            {
+              "leftValue": "={{ $json.userRole }}",
+              "rightValue": "employee",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "access-control",
+      "name": "Contrôle d'Accès",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 200]
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-ada-002",
+        "options": {
+          "maxTokens": 500
+        }
+      },
+      "id": "embedding-generator",
+      "name": "Génération Embedding",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [860, 340],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-embedding-credentials",
+          "name": "OpenAI Embedding API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://qdrant-service:6333/collections/enterprise_knowledge/points/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "vector",
+              "value": "={{ $json.data[0].embedding }}"
+            },
+            {
+              "name": "limit",
+              "value": 5
+            },
+            {
+              "name": "with_payload",
+              "value": true
+            },
+            {
+              "name": "filter",
+              "value": "={{ { \"must\": [{ \"key\": \"user_role\", \"match\": { \"any\": [\"public\", $('Analyseur de Requête').item.json.userRole] } }] } }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "vector-search",
+      "name": "Recherche Vectorielle",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1060, 340]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Analyseur de Requête').item.json.needsRealTimeData }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "realtime-check",
+      "name": "Besoin Données Temps Réel?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1260, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://erp-api.internal.company.com/api/v1/inventory/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.erpApiToken }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $('Analyseur de Requête').item.json.userQuery }}"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "erp-inventory-api",
+      "name": "API ERP - Inventaire",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1460, 120],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erp-api-credentials",
+          "name": "ERP API Headers"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://crm-api.internal.company.com/api/v1/sales/metrics",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.crmApiToken }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "period",
+              "value": "current_month"
+            },
+            {
+              "name": "user_id",
+              "value": "={{ $('Analyseur de Requête').item.json.userId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "crm-sales-api",
+      "name": "API CRM - Ventes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1460, 280],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "crm-api-credentials",
+          "name": "CRM API Headers"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Agent Orchestrateur - Détermine quelle stratégie utiliser\nconst queryType = $('Analyseur de Requête').item.json.queryType;\nconst userQuery = $('Analyseur de Requête').item.json.userQuery;\nconst vectorResults = $('Recherche Vectorielle').item.json.result || [];\nconst realtimeData = $input.all().find(item => item.json.source === 'realtime') || null;\n\n// Analyse de la pertinence des résultats\nlet hasRelevantKnowledge = false;\nlet contextScore = 0;\n\nif (vectorResults.length > 0) {\n  // Calcul du score de pertinence\n  const avgScore = vectorResults.reduce((sum, result) => sum + result.score, 0) / vectorResults.length;\n  contextScore = avgScore;\n  hasRelevantKnowledge = avgScore > 0.7; // Seuil de pertinence\n}\n\n// Décision de routage\nlet agentStrategy = 'hybrid'; // Par défaut\nlet requiresSpecializedAgent = false;\nlet needsMultiStep = false;\n\nif (queryType === 'inventory' && realtimeData) {\n  agentStrategy = 'realtime_focused';\n  requiresSpecializedAgent = true;\n}\nelse if (queryType === 'hr' || queryType === 'sales') {\n  agentStrategy = 'policy_expert';\n  requiresSpecializedAgent = true;\n}\nelse if (!hasRelevantKnowledge && contextScore < 0.5) {\n  agentStrategy = 'clarification_needed';\n  needsMultiStep = true;\n}\nelse if (userQuery.toLowerCase().includes('compare') || userQuery.toLowerCase().includes('analyse')) {\n  agentStrategy = 'analytical';\n  needsMultiStep = true;\n}\n\n// Préparation du contexte pour les agents\nconst contextDocuments = vectorResults.map(result => ({\n  content: result.payload.content,\n  source: result.payload.source,\n  score: result.score,\n  metadata: result.payload.metadata\n}));\n\nconst realtimeContext = realtimeData ? {\n  data: realtimeData.json.data,\n  source: realtimeData.json.source,\n  timestamp: realtimeData.json.timestamp\n} : null;\n\nreturn {\n  agentStrategy,\n  requiresSpecializedAgent,\n  needsMultiStep,\n  hasRelevantKnowledge,\n  contextScore,\n  contextDocuments,\n  realtimeContext,\n  orchestratorDecision: {\n    confidence: contextScore,\n    reasoning: `Stratégie ${agentStrategy} choisie basée sur type ${queryType}, pertinence ${contextScore.toFixed(2)}`,\n    nextSteps: requiresSpecializedAgent ? ['route_to_specialist'] : ['direct_generation']\n  }\n};"
+      },
+      "id": "agent-orchestrator",
+      "name": "Agent Orchestrateur",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1660, 340]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.requiresSpecializedAgent }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "specialist-routing",
+      "name": "Routage Agent Spécialisé?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1860, 340]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "messageValues": [
+            {
+              "role": "system",
+              "message": "Tu es un Agent Analyste Métier spécialisé dans l'analyse de données d'entreprise. Tu excelles dans l'interprétation de métriques, la création de synthèses et l'aide à la prise de décision.\n\n**INSTRUCTIONS SPÉCIFIQUES:**\n1. Analyse les données temps réel ET les documents de référence\n2. Fournis des insights actionnables\n3. Cite toujours tes sources\n4. Adopte un ton professionnel mais accessible\n5. Structure tes réponses avec des points clés\n\n**CONTEXTE DE SÉCURITÉ:**\n- Respecte les niveaux d'accès utilisateur\n- Ne révèle jamais d'informations confidentielles non autorisées\n- En cas de doute sur les permissions, demande clarification"
+            },
+            {
+              "role": "user",
+              "message": "**REQUÊTE UTILISATEUR:** {{ $('Analyseur de Requête').item.json.userQuery }}\n\n**PROFIL UTILISATEUR:**\n- ID: {{ $('Analyseur de Requête').item.json.userId }}\n- Rôle: {{ $('Analyseur de Requête').item.json.userRole }}\n- Type de requête: {{ $('Analyseur de Requête').item.json.queryType }}\n\n**CONTEXTE DOCUMENTAIRE:**\n{% for doc in $('Agent Orchestrateur').item.json.contextDocuments %}\n**Source:** {{ doc.source }} (Pertinence: {{ doc.score }})\n**Contenu:** {{ doc.content }}\n---\n{% endfor %}\n\n**DONNÉES TEMPS RÉEL:**\n{% if $('Agent Orchestrateur').item.json.realtimeContext %}\n{{ $('Agent Orchestrateur').item.json.realtimeContext | json }}\n{% else %}\nAucune donnée temps réel disponible\n{% endif %}\n\nAnalyse ces informations et fournis une réponse complète et structurée."
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 1000
+        }
+      },
+      "id": "specialist-analyst",
+      "name": "Agent Analyste Spécialisé",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [2060, 240],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-gpt-credentials",
+          "name": "OpenAI GPT API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "messageValues": [
+            {
+              "role": "system",
+              "message": "Tu es un Agent de Vérification de Politique chargé de vérifier la conformité et de fournir des informations précises sur les politiques d'entreprise.\n\n**RESPONSABILITÉS:**\n1. Vérifier l'exactitude des informations politiques\n2. S'assurer de la conformité réglementaire\n3. Fournir des références précises aux documents officiels\n4. Alerter sur les changements récents de politique\n\n**PROTOCOLE DE SÉCURITÉ:**\n- Vérifier le niveau d'autorisation avant de divulguer des informations sensibles\n- Rediriger vers les ressources humaines pour les questions personnelles\n- Documenter toutes les requêtes pour audit"
+            },
+            {
+              "role": "user",
+              "message": "**REQUÊTE:** {{ $('Analyseur de Requête').item.json.userQuery }}\n\n**UTILISATEUR:** {{ $('Analyseur de Requête').item.json.userRole }}\n\n**DOCUMENTS DE RÉFÉRENCE:**\n{% for doc in $('Agent Orchestrateur').item.json.contextDocuments %}\n- **{{ doc.source }}:** {{ doc.content | truncate(200) }}\n{% endfor %}\n\nVérifie la politique applicable et fournis une réponse conforme."
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.1,
+          "maxTokens": 800
+        }
+      },
+      "id": "policy-agent",
+      "name": "Agent Politique",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [2060, 440],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-gpt-credentials",
+          "name": "OpenAI GPT API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-3.5-turbo",
+        "messages": {
+          "messageValues": [
+            {
+              "role": "system",
+              "message": "Tu es un Assistant Généraliste RAG capable de répondre à diverses questions en utilisant les documents de la base de connaissances d'entreprise.\n\n**DIRECTIVES:**\n1. Base tes réponses UNIQUEMENT sur les documents fournis\n2. Si l'information n'est pas dans les documents, dis \"Je ne trouve pas cette information dans la base de connaissances\"\n3. Cite toujours tes sources entre []\n4. Sois concis mais complet\n5. Adapte ton niveau de détail au contexte professionnel"
+            },
+            {
+              "role": "user",
+              "message": "**QUESTION:** {{ $('Analyseur de Requête').item.json.userQuery }}\n\n**CONTEXTE DISPONIBLE:**\n{% for doc in $('Agent Orchestrateur').item.json.contextDocuments %}\n[{{ doc.source }}] {{ doc.content }}\n\n{% endfor %}\n\nRéponds à la question en utilisant uniquement ces informations."
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.2,
+          "maxTokens": 600
+        }
+      },
+      "id": "general-rag-agent",
+      "name": "Agent RAG Général",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [2060, 640],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-gpt-credentials",
+          "name": "OpenAI GPT API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Agrégation et synthèse finale\nconst originalQuery = $('Analyseur de Requête').item.json.userQuery;\nconst sessionId = $('Analyseur de Requête').item.json.sessionId;\nconst agentStrategy = $('Agent Orchestrateur').item.json.agentStrategy;\nconst contextScore = $('Agent Orchestrateur').item.json.contextScore;\n\n// Collecte des réponses des différents agents\nconst responses = [];\nconst sources = [];\nlet confidence = 0;\n\n// Traitement des réponses selon l'agent activé\nif ($input.all().find(item => item.json.choices)) {\n  const agentResponse = $input.all().find(item => item.json.choices);\n  const response = agentResponse.json.choices[0].message.content;\n  \n  responses.push({\n    agent: agentStrategy,\n    content: response,\n    confidence: contextScore\n  });\n  \n  // Extraction des sources citées\n  const sourceMatches = response.match(/\\[([^\\]]+)\\]/g);\n  if (sourceMatches) {\n    sourceMatches.forEach(match => {\n      const source = match.replace(/[\\[\\]]/g, '');\n      if (!sources.includes(source)) {\n        sources.push(source);\n      }\n    });\n  }\n  \n  confidence = contextScore;\n}\n\n// Préparation de la réponse finale\nlet finalResponse = \"\";\nlet metadata = {};\n\nif (responses.length > 0) {\n  finalResponse = responses[0].content;\n  \n  // Ajout de métadonnées sur la qualité de la réponse\n  let qualityIndicator = \"\";\n  if (confidence > 0.8) {\n    qualityIndicator = \"🟢 Réponse de haute confiance\";\n  } else if (confidence > 0.5) {\n    qualityIndicator = \"🟡 Réponse de confiance modérée\";\n  } else {\n    qualityIndicator = \"🔴 Réponse de faible confiance - Vérification recommandée\";\n  }\n  \n  metadata = {\n    sessionId,\n    strategy: agentStrategy,\n    confidence: confidence.toFixed(2),\n    qualityIndicator,\n    sourcesUsed: sources.length,\n    timestamp: new Date().toISOString(),\n    processingTime: Date.now() - parseInt(sessionId.split('_')[1])\n  };\n  \n} else {\n  finalResponse = \"Je n'ai pas pu traiter votre demande. Veuillez reformuler votre question ou contacter le support.\";\n  metadata = {\n    sessionId,\n    strategy: 'error',\n    confidence: 0,\n    qualityIndicator: \"❌ Erreur de traitement\",\n    timestamp: new Date().toISOString()\n  };\n}\n\n// Log pour audit\nconst auditLog = {\n  sessionId,\n  userQuery: originalQuery,\n  strategy: agentStrategy,\n  confidence,\n  sourcesCount: sources.length,\n  responseLength: finalResponse.length,\n  timestamp: new Date().toISOString()\n};\n\nreturn {\n  response: finalResponse,\n  metadata,\n  sources,\n  auditLog\n};"
+      },
+      "id": "response-synthesizer",
+      "name": "Synthétiseur de Réponse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2260, 440]
+    },
+    {
+      "parameters": {
+        "url": "http://audit-service.internal.company.com/api/v1/logs/rag",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.auditApiToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "auditLog",
+              "value": "={{ $json.auditLog }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "audit-logger",
+      "name": "Logger d'Audit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2460, 540],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "audit-api-credentials",
+          "name": "Audit API Headers"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \n  \"success\": true,\n  \"data\": {\n    \"response\": $json.response,\n    \"metadata\": $json.metadata,\n    \"sources\": $json.sources\n  },\n  \"timestamp\": new Date().toISOString()\n} }}"
+      },
+      "id": "webhook-response",
+      "name": "Réponse Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2460, 340]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \n  \"success\": false,\n  \"error\": {\n    \"code\": \"ACCESS_DENIED\",\n    \"message\": \"Accès refusé - Privilèges insuffisants pour cette requête\",\n    \"details\": \"Cette information nécessite des droits d'accès élevés. Contactez votre administrateur.\"\n  },\n  \"timestamp\": new Date().toISOString()\n} }}",
+        "options": {}
+      },
+      "id": "access-denied-response",
+      "name": "Réponse Accès Refusé",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [860, 100]
+    }
+  ],
+  "connections": {
+    "Webhook RAG": {
+      "main": [
+        [
+          {
+            "node": "Analyseur de Requête",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyseur de Requête": {
+      "main": [
+        [
+          {
+            "node": "Contrôle d'Accès",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contrôle d'Accès": {
+      "main": [
+        [
+          {
+            "node": "Réponse Accès Refusé",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Génération Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Génération Embedding": {
+      "main": [
+        [
+          {
+            "node": "Recherche Vectorielle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recherche Vectorielle": {
+      "main": [
+        [
+          {
+            "node": "Besoin Données Temps Réel?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Besoin Données Temps Réel?": {
+      "main": [
+        [
+          {
+            "node": "API ERP - Inventaire",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "API CRM - Ventes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agent Orchestrateur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API ERP - Inventaire": {
+      "main": [
+        [
+          {
+            "node": "Agent Orchestrateur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API CRM - Ventes": {
+      "main": [
+        [
+          {
+            "node": "Agent Orchestrateur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent Orchestrateur": {
+      "main": [
+        [
+          {
+            "node": "Routage Agent Spécialisé?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routage Agent Spécialisé?": {
+      "main": [
+        [
+          {
+            "node": "Agent Analyste Spécialisé",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Agent Politique",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agent RAG Général",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent Analyste Spécialisé": {
+      "main": [
+        [
+          {
+            "node": "Synthétiseur de Réponse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent Politique": {
+      "main": [
+        [
+          {
+            "node": "Synthétiseur de Réponse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent RAG Général": {
+      "main": [
+        [
+          {
+            "node": "Synthétiseur de Réponse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Synthétiseur de Réponse": {
+      "main": [
+        [
+          {
+            "node": "Réponse Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Logger d'Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "id": "rag-enterprise",
+      "name": "RAG Enterprise"
+    },
+    {
+      "id": "ai-agents",
+      "name": "AI Agents"
+    },
+    {
+      "id": "knowledge-management",
+      "name": "Knowledge Management"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-27T10:00:00.000Z",
+  "versionId": "1.0.0"
+}
